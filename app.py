@@ -276,19 +276,18 @@ with tab_anim:
     fig_anim.frames = frames
 
     # Animation controls
-    fig_anim.update_menus([dict(
-        type="buttons",
-        showactive=False,
-        y=1.0, x=0.0, xanchor="left", yanchor="top",
-        buttons=[
-            dict(label="▶ Play", method="animate",
-                 args=[None, dict(frame=dict(duration=100, redraw=True), fromcurrent=True)]),
-            dict(label="⏸ Pause", method="animate",
-                 args=[[None], dict(frame=dict(duration=0, redraw=True), mode="immediate")]),
-        ]
-    )])
-    
     fig_anim.update_layout(
+        updatemenus=[dict(
+            type="buttons",
+            showactive=False,
+            y=1.0, x=0.0, xanchor="left", yanchor="top",
+            buttons=[
+                dict(label="▶ Play", method="animate",
+                     args=[None, dict(frame=dict(duration=100, redraw=True), fromcurrent=True)]),
+                dict(label="⏸ Pause", method="animate",
+                     args=[[None], dict(frame=dict(duration=0, redraw=True), mode="immediate")]),
+            ]
+        )],
         sliders=[dict(
             active=0, x=0.0, y=-0.15,
             len=1.0, xanchor="left", yanchor="top",
@@ -296,14 +295,9 @@ with tab_anim:
                         label=f.name)
                    for f in frames],
         )],
-    )
-
-    fig_anim.update_xaxes(range=[-0.1, 1.1], title="Islam ← → (X-axis)")
-    fig_anim.update_yaxes(range=[-0.1, 1.1], title="Other ← → (Y-axis)")
-    fig_anim.update_layout(
         height=600, width=600, hovermode="closest",
-        xaxis=dict(scaleanchor="y", scaleratio=1),
-        yaxis=dict(scaleanchor="x", scaleratio=1),
+        xaxis=dict(scaleanchor="y", scaleratio=1, range=[-0.1, 1.1], title="Islam ← → (X-axis)"),
+        yaxis=dict(scaleanchor="x", scaleratio=1, range=[-0.1, 1.1], title="Other ← → (Y-axis)"),
     )
 
     st.plotly_chart(fig_anim, use_container_width=False, config={"responsive": False})
