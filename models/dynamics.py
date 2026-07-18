@@ -49,6 +49,7 @@ def simulate(
     initial_pops: dict,     # dict[str, float]  — fractional or absolute
     n_generations: int,
     base_rate: float = 0.15,
+    return_by_year: bool = False,
 ) -> list[dict[str, float]]:
     """
     Run the ideological spread model for *n_generations* time steps.
@@ -56,17 +57,20 @@ def simulate(
     Parameters
     ----------
     groups : dict[str, IdeologicalGroup]
-        All groups to simulate (including the "Others" reservoir).
+        All groups to simulate (including the "Other" reservoir).
     initial_pops : dict[str, float]
         Starting population (fractional shares that need not sum to 1).
     n_generations : int
         Number of 40-year generations to simulate.
     base_rate : float
         Global transmission rate β.  Typical range 0.05–0.5.
+    return_by_year : bool
+        If True, interpolate and return one entry per year (not just per generation).
+        Default False returns one per generation.
 
     Returns
     -------
-    list of dicts, length n_generations + 1.
+    list of dicts, length n_generations + 1 (or ~40x that if return_by_year=True).
     Each dict maps group name → population SHARE at that time step (generation 0
     is the initial state).
     """

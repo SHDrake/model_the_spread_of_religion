@@ -3,6 +3,9 @@ app.py — Streamlit webapp for the Ideological Spread Model.
 
 Run with:
     streamlit run app.py
+
+4-group model: Christianity, Islam, Pridianism, Other.
+Includes animated square-plot visualization with dots moving frame-by-frame.
 """
 
 import numpy as np
@@ -11,7 +14,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from models.dynamics import REPLACEMENT_RATE, find_dominance_year, simulate
-from models.groups import DEFAULT_GROUPS, OTHERS_GROUP, IdeologicalGroup
+from models.groups import DEFAULT_GROUPS, OTHER_GROUP, IdeologicalGroup
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -29,27 +32,54 @@ N_HIST = 3  # historical generations: 1906 → 1946 → 1986 → 2026
 GROUP_COLORS = {
     "Christianity": "#3B82F6",
     "Islam":        "#10B981",
-    "Secularism":   "#F59E0B",
     "Pridianism":   "#EC4899",
-    "Others":       "#9CA3AF",
+    "Other":        "#9CA3AF",
 }
 
 # Approximate global share data from Pew Research, UN, Gallup.
 # Used for validation only — not directly fitted.
+# "Other" aggregates Secularism + Hinduism + Buddhism + Mormonism + JWs + etc.
 HISTORICAL: dict[str, list[float]] = {
     "Christianity": [0.340, 0.335, 0.330, 0.310],
     "Islam":        [0.121, 0.135, 0.190, 0.250],
-    "Secularism":   [0.005, 0.020, 0.100, 0.160],
     "Pridianism":   [0.001, 0.002, 0.010, 0.055],
+    "Other":        [0.538, 0.528, 0.470, 0.385],  # Secularism + other religions
 }
 HIST_YEARS = [1906, 1946, 1986, 2026]
 
 DEFAULT_INIT_SHARES = {
     "Christianity": 0.340,
     "Islam":        0.121,
-    "Secularism":   0.005,
     "Pridianism":   0.001,
 }
+
+# 4-corner plot corners: (x, y) coordinates in normalized space
+CORNER_POS = {
+    "Christianity": (0.0, 0.0),    # bottom-left
+    "Islam":        (1.0, 0.0),    # bottom-right
+    "Pridianism":   (1.0, 1.0),    # top-right
+    "Other":        (0.0, 1.0),    # top-left
+}
+
+
+# ── Helper functions ──────────────────────────────────────────────────────────
+
+def shares_to_square_coords(shares: dict[str, float]) -> tuple[float, float]:
+    """
+    Map 4-group composition to a point in the unit square [0,1]² using barycentric-like interpolation.
+    
+    The 4 corners represent 100% of each group. Intermediate positions reflect the
+    weighted average position on the square.
+    
+    Returns
+    -------
+    (x, y) : tuple of floats in [0, 1]
+    """
+    x = shares.get("Islam", 0) * CORNER_POS["Islam"][0] + \
+        shares.get("Pridianism", 0) * CORNER_POS["Pridianism"][0]
+    y = shares.get("Pridianism", 0) * CORNER_POS["Pridianism"][1] + \
+        shares.get("Other", 0) * CORNER_POS["Other"][1]
+    return (float(x), float(y))
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -74,7 +104,9 @@ st.sidebar.divider()
 st.sidebar.header("Group Parameters")
 st.sidebar.caption(
     "Adjust each group's parameters. Initial share sets their fraction of the "
-    "global population in 1906. The remainder goes to 'Others' (non-modelled groups)."
+    "global population in 1906. The remainder goes to 'Other'.\n\n"
+    "**Note:** Christianity includes Catholics, Protestants, Eastern Orthodox only. "
+    "Mormonism, JWs, etc. are in 'Other'."
 )
 
 
@@ -140,10 +172,10 @@ for g_name, g_defaults in DEFAULT_GROUPS.items():
     groups[g_name] = g
     init_shares[g_name] = s
 
-# "Others" fills the remainder — not exposed in UI
-others_share = max(0.001, 1.0 - sum(init_shares.values()))
-groups["Others"] = OTHERS_GROUP
-init_shares["Others"] = others_share
+# "Other" fills the remainder — not exposed in UI
+other_share = max(0.001, 1.0 - sum(init_shares.values()))
+groups["Other"] = OTHER_GROUP
+init_shares["Other"] = other_share
 
 # ── Run simulation ────────────────────────────────────────────────────────────
 total_gens = N_HIST + n_future
@@ -158,13 +190,13 @@ sim_df = pd.DataFrame(results, index=all_years)
 st.title("Modeling the Spread of Ideology")
 st.markdown(
     "An epidemic-style generational model of how **Christianity**, **Islam**, "
-    "**Secularism**, and **Pridianism** compete for global share across time.  "
+    "**Pridianism**, and **Other** (Secularism + other religions) compete for global share. "
     "Each time step = one generation (40 years).  Adjust parameters in the sidebar."
 )
 
 # Summary metrics row
-col_c, col_i, col_s, col_p, col_o = st.columns(5)
-for col, name in zip([col_c, col_i, col_s, col_p, col_o], [*DEFAULT_GROUPS.keys(), "Others"]):
+col_c, col_i, col_p, col_o = st.columns(4)
+for col, name in zip([col_c, col_i, col_p, col_o], ["Christianity", "Islam", "Pridianism", "Other"]):
     current = sim_df.loc[all_years[N_HIST], name] * 100
     initial = sim_df.loc[all_years[0], name] * 100
     col.metric(
@@ -176,9 +208,105 @@ for col, name in zip([col_c, col_i, col_s, col_p, col_o], [*DEFAULT_GROUPS.keys(
 st.divider()
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_val, tab_proj, tab_params, tab_data = st.tabs(
-    ["📊 Validation (1906–2026)", "🔭 Projections", "⚙️ Parameter Explorer", "📋 Data"]
+tab_anim, tab_val, tab_proj, tab_params, tab_data = st.tabs(
+    ["🎬 Frame-by-Frame (Square Plot)", "📊 Validation (1906–2026)", "🔭 Projections", "⚙️ Parameter Explorer", "📋 Data"]
 )
+
+# ────────────────────────────────────────────────────────────────────────────
+# TAB 0 — Animated Square Plot
+# ────────────────────────────────────────────────────────────────────────────
+with tab_anim:
+    st.subheader("Ideological Spread: Year-by-Year Animation")
+    st.caption(
+        "Each dot represents the global ideological composition at that year. "
+        "The 4 corners represent 100% of each group: bottom-left=Christianity, "
+        "bottom-right=Islam, top-right=Pridianism, top-left=Other."
+    )
+
+    # Build animated frames for all years
+    frame_years = all_years
+    frame_shares = [sim_df.loc[yr].to_dict() for yr in frame_years]
+    frame_coords = [shares_to_square_coords(s) for s in frame_shares]
+
+    # Create figure with animation
+    fig_anim = go.Figure()
+
+    # Add corner labels
+    for group_name, (x, y) in CORNER_POS.items():
+        color = GROUP_COLORS[group_name]
+        fig_anim.add_trace(go.Scatter(
+            x=[x], y=[y],
+            mode="text+markers",
+            name=group_name,
+            marker=dict(size=20, color=color, symbol="square"),
+            text=[group_name],
+            textposition="middle center",
+            textfont=dict(size=10, color="white", family="Arial Black"),
+            showlegend=False,
+            hoverinfo="skip",
+        ))
+
+    # Add frames for animation
+    frames = []
+    for year, (x, y) in zip(frame_years, frame_coords):
+        frame = go.Frame(
+            data=[
+                go.Scatter(
+                    x=[x], y=[y],
+                    mode="markers",
+                    marker=dict(size=25, color="#FF6B6B", line=dict(width=2, color="white")),
+                    text=[f"Year {year}<br>x={x:.2f}, y={y:.2f}"],
+                    hovertemplate="%{text}",
+                    showlegend=False,
+                )
+            ],
+            name=str(year),
+        )
+        frames.append(frame)
+
+    fig_anim.add_trace(go.Scatter(
+        x=[frame_coords[0][0]], y=[frame_coords[0][1]],
+        mode="markers",
+        marker=dict(size=25, color="#FF6B6B", line=dict(width=2, color="white")),
+        name="Position",
+        hovertemplate="<b>%{text}</b>",
+        text=[f"Year {frame_years[0]}"],
+    ))
+
+    fig_anim.frames = frames
+
+    # Animation controls
+    fig_anim.update_menus([dict(
+        type="buttons",
+        showactive=False,
+        y=1.0, x=0.0, xanchor="left", yanchor="top",
+        buttons=[
+            dict(label="▶ Play", method="animate",
+                 args=[None, dict(frame=dict(duration=100, redraw=True), fromcurrent=True)]),
+            dict(label="⏸ Pause", method="animate",
+                 args=[[None], dict(frame=dict(duration=0, redraw=True), mode="immediate")]),
+        ]
+    )])
+    
+    fig_anim.update_layout(
+        sliders=[dict(
+            active=0, x=0.0, y=-0.15,
+            len=1.0, xanchor="left", yanchor="top",
+            steps=[dict(args=[[f.name], dict(frame=dict(duration=100, redraw=True), mode="immediate")],
+                        label=f.name)
+                   for f in frames],
+        )],
+    )
+
+    fig_anim.update_xaxes(range=[-0.1, 1.1], title="Islam ← → (X-axis)")
+    fig_anim.update_yaxes(range=[-0.1, 1.1], title="Other ← → (Y-axis)")
+    fig_anim.update_layout(
+        height=600, width=600, hovermode="closest",
+        xaxis=dict(scaleanchor="y", scaleratio=1),
+        yaxis=dict(scaleanchor="x", scaleratio=1),
+    )
+
+    st.plotly_chart(fig_anim, use_container_width=False, config={"responsive": False})
 
 # ────────────────────────────────────────────────────────────────────────────
 # TAB 1 — Validation
@@ -191,7 +319,7 @@ with tab_val:
     )
 
     fig_val = go.Figure()
-    for name in DEFAULT_GROUPS:
+    for name in ["Christianity", "Islam", "Pridianism", "Other"]:
         color = GROUP_COLORS[name]
         # Model line
         fig_val.add_trace(go.Scatter(
@@ -224,16 +352,16 @@ with tab_val:
 
     # RMSE per group
     st.subheader("Validation Error (RMSE)")
-    err_cols = st.columns(len(DEFAULT_GROUPS))
-    for col, name in zip(err_cols, DEFAULT_GROUPS):
+    err_cols = st.columns(4)
+    for col, name in zip(err_cols, ["Christianity", "Islam", "Pridianism", "Other"]):
         sim_vals = np.array([sim_df.loc[yr, name] for yr in HIST_YEARS])
         hist_vals = np.array(HISTORICAL[name])
         rmse = float(np.sqrt(np.mean((sim_vals - hist_vals) ** 2)))
         col.metric(name, f"{rmse:.4f}", help="Lower = better fit to historical data.")
 
     st.info(
-        "**Note:** Historical shares for Pridianism (LGBTQ+ identity) are estimates "
-        "from survey data and carry significant uncertainty, especially pre-1986.",
+        "**Note:** Pridianism (LGBTQ+ identity) data are estimates from survey data and carry significant uncertainty, "
+        "especially pre-1986. 'Other' aggregates Secularism + Hinduism + Buddhism + Mormonism + JWs + etc.",
         icon="ℹ️",
     )
 
@@ -246,7 +374,7 @@ with tab_proj:
     st.subheader(f"Forward Projection  (2026 → {end_year})")
 
     fig_proj = go.Figure()
-    for name in DEFAULT_GROUPS:
+    for name in ["Christianity", "Islam", "Pridianism", "Other"]:
         color = GROUP_COLORS[name]
         y_vals = (sim_df.loc[proj_years, name] * 100).tolist()
         fig_proj.add_trace(go.Scatter(
@@ -274,8 +402,8 @@ with tab_proj:
 
     # Dominance summary
     st.subheader("Dominance Analysis")
-    dom_cols = st.columns(len(DEFAULT_GROUPS))
-    for col, name in zip(dom_cols, DEFAULT_GROUPS):
+    dom_cols = st.columns(4)
+    for col, name in zip(dom_cols, ["Christianity", "Islam", "Pridianism", "Other"]):
         yr = find_dominance_year(sim_df.loc[proj_years], name, threshold=0.50)
         if yr is not None:
             col.metric(name, f"Dominant by {yr}",
@@ -291,10 +419,10 @@ with tab_proj:
                 delta_color="normal",
             )
 
-    # Stacked area chart showing full picture including Others
+    # Stacked area chart showing full picture
     st.subheader("Population Share — Stacked View (all groups)")
     fig_stack = go.Figure()
-    all_names = [*DEFAULT_GROUPS.keys(), "Others"]
+    all_names = ["Christianity", "Islam", "Pridianism", "Other"]
     for name in reversed(all_names):
         color = GROUP_COLORS[name]
         fig_stack.add_trace(go.Scatter(
@@ -329,9 +457,8 @@ with tab_params:
     st.caption("Values reflect what you have set in the sidebar.")
 
     param_rows = []
-    for name, g in groups.items():
-        if name == "Others":
-            continue
+    for name in ["Christianity", "Islam", "Pridianism"]:
+        g = groups[name]
         param_rows.append({
             "Group": name,
             "Feminism (1–4)": g.feminism,
@@ -344,6 +471,12 @@ with tab_params:
     param_df = pd.DataFrame(param_rows).set_index("Group")
     st.dataframe(param_df, use_container_width=True)
 
+    st.markdown(
+        f"**Other** (fixed): Feminism={OTHER_GROUP.feminism}, "
+        f"Fertility={OTHER_GROUP.reproduction}, Gen. Immunity={OTHER_GROUP.generational_immunity}, "
+        f"Initial Share={init_shares['Other']:.3f}"
+    )
+
     st.divider()
     st.subheader("Feminism Compatibility Matrix")
     st.caption(
@@ -351,7 +484,7 @@ with tab_params:
         "Computed as 1 / (1 + |f_src − f_tgt|).  Diagonal = self (N/A)."
     )
 
-    group_names_main = list(DEFAULT_GROUPS.keys())
+    group_names_main = ["Christianity", "Islam", "Pridianism", "Other"]
     compat_data = {}
     for src in group_names_main:
         row = {}
@@ -359,8 +492,8 @@ with tab_params:
             if src == tgt:
                 row[tgt] = "—"
             else:
-                f_src = groups[src].feminism
-                f_tgt = groups[tgt].feminism
+                f_src = groups[src].feminism if src != "Other" else OTHER_GROUP.feminism
+                f_tgt = groups[tgt].feminism if tgt != "Other" else OTHER_GROUP.feminism
                 val = 1.0 / (1.0 + abs(f_src - f_tgt))
                 row[tgt] = f"{val:.3f}"
         compat_data[src] = row
@@ -406,5 +539,6 @@ with tab_data:
     st.caption(
         "Sources: Pew Research Center Global Religious Landscape, "
         "Gallup LGBTQ+ identification surveys, UN World Population Prospects. "
+        "'Other' aggregates Secularism + Hinduism + Buddhism + Mormonism + JWs + etc. "
         "All figures are estimates and subject to uncertainty."
     )

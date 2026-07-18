@@ -38,6 +38,8 @@ class IdeologicalGroup:
 
 
 # ── Default parameter estimates (tunable via UI) ──────────────────────────────
+# Christianity = Catholics, Protestants, Eastern Orthodox only.
+# Mormonism, Jehovah's Witnesses, etc. → Other.
 DEFAULT_GROUPS: dict[str, IdeologicalGroup] = {
     "Christianity": IdeologicalGroup(
         name="Christianity",
@@ -55,14 +57,6 @@ DEFAULT_GROUPS: dict[str, IdeologicalGroup] = {
         reproduction=3.1,
         generational_immunity=1,
     ),
-    "Secularism": IdeologicalGroup(
-        name="Secularism",
-        feminism=3.2,
-        desire_to_infect=False,
-        infection_outcome="convert",
-        reproduction=1.6,
-        generational_immunity=2,
-    ),
     "Pridianism": IdeologicalGroup(
         name="Pridianism",
         feminism=4.0,
@@ -73,14 +67,13 @@ DEFAULT_GROUPS: dict[str, IdeologicalGroup] = {
     ),
 }
 
-# ── Implicit "Others" reservoir (all remaining world population) ──────────────
-# Not user-editable in the sidebar; acts as a susceptible pool for proselytising
-# groups to draw from.  Feminism score is set to the midpoint (neutral).
-OTHERS_GROUP = IdeologicalGroup(
-    name="Others",
-    feminism=2.5,
+# ── "Other" reservoir (Secularism, Hinduism, Buddhism, Mormonism, JWs, etc.) ──
+# Aggregates all non-modeled groups + secular populations.
+OTHER_GROUP = IdeologicalGroup(
+    name="Other",
+    feminism=2.8,  # Slightly more feminist-aligned than neutral (avg of secular + varied religions)
     desire_to_infect=False,
     infection_outcome="convert",
-    reproduction=2.1,
+    reproduction=1.8,
     generational_immunity=1,
 )
